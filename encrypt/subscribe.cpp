@@ -90,9 +90,9 @@ void SwapChar(char *a, char *b) {
 	*b = temp;
 }
 
-// this swaps characters and inverts the base 36 digits
+// this swaps characters and inverts the base 36 digits for the update request (9 characters)
 // calling again will undo the mix
-void MixIt(char *s) {
+void MixSN(char *s) {
 
 	// swap some digits for obfuscation
 	SwapChar(&(s[0]), &(s[4]));
@@ -101,6 +101,18 @@ void MixIt(char *s) {
 	SwapChar(&(s[5]), &(s[7]));
 
 	InvertDigits(s);
+}
+
+// this swaps characters and inverts the base 36 digits for the service authorization (8 characters)
+// calling again will undo the mix
+void MixAuth(char *s) {
+
+	// swap some digits for obfuscation
+	SwapChar(&(s[0]), &(s[6]));
+	SwapChar(&(s[1]), &(s[4]));
+	SwapChar(&(s[2]), &(s[5]));
+	SwapChar(&(s[3]), &(s[7]));
+
 }
 
 // Converts day mon year to days since jan 1, 2020
@@ -213,11 +225,11 @@ bool EncodeSN(char *snstr, uint16_t mweek, uint16_t myear, uint16_t eday, uint16
 	snstr[9] = '\0';
 
 	// scramble
-	MixIt(snstr);
+	MixSN(snstr);
 	return true;
 }
 
-// decodes serial number and mfr date from encoded snstr
+// decodes serial number, mfr date, and current expiration date from encoded snstr
 // this is done on the web server
 // returns false if check character does not match or if values are out of range
 bool DecodeSN(char *snstr, uint16_t *mweek, uint16_t *myear, uint16_t *eday, uint16_t *emon, uint16_t *eyear, uint16_t *sn) {
@@ -225,7 +237,7 @@ bool DecodeSN(char *snstr, uint16_t *mweek, uint16_t *myear, uint16_t *eday, uin
 	uint32_t expday;
 
 	// descramble
-	MixIt(snstr);
+	MixSN(snstr);
 
 	checkchar = snstr[8];
 	snstr[8] = '\0';
@@ -248,6 +260,91 @@ bool DecodeSN(char *snstr, uint16_t *mweek, uint16_t *myear, uint16_t *eday, uin
 		return false;
 	if (*myear < 2020 || *myear > 2055)
 		return false;
+	if (*eday < 1 || *eday > 31)
+		return false;
+	if (*emon < 1 || *emon > 12)
+		return false;
+	if (*eyear < 2020 || *eyear > 2055)
+		return false;
+	if (*sn <= 1000 || *sn >= 42357)
+		return false;
+
+	return true;
+}
+
+// calculates a 16 bit crc from an array of bytes
+uint16_t crc16(uint8_t *data_p, uint8_t length){
+    uint8_t x;
+    uint16_t crc = 0xFFFF;
+
+    while (length--){
+        x = crc >> 8 ^ *data_p++;
+        x ^= x>>4;
+        crc = (crc << 8) ^ ((unsigned short)(x << 12)) ^ ((unsigned short)(x <<5)) ^ ((unsigned short)x);
+    }
+    return crc;
+}
+
+// encodes serial number and new service plan expiration date into snstr
+// this is done on the web server
+// expiration date is day (1-31), month (1-12), year (2020 - 2055)
+// returns false on error
+// return string is encoded as 9 character string (before scrambling):
+// WWSSSXXXC where WW is week of manufacture since 2020, SSS is serial number, XXX is expiration day since 2020, and C is additive checksum
+bool EncodeAuthKey(char *snstr, uint16_t eday, uint16_t emon, uint16_t eyear, uint16_t sn) {
+	uint16_t expday;
+	uint16_t crc;
+
+	if (eday < 1 || eday > 31)
+		return false;
+	if (emon < 1 || emon > 12)
+		return false;
+	if (eyear < 2020 || eyear > 2055)
+		return false;
+	if (sn <= 1000 || sn >= 42357)
+		return false;
+
+	// calculate expiration day and put into string
+	expday = CalcDays(eday, emon, eyear);
+	EncodeNumber(snstr, 3, expday);
+
+	// put sn into string
+	EncodeNumber(snstr+3, 3, sn);
+
+	// calculate and insert check digits
+	crc = crc16((uint8_t *) snstr, 6);
+	snstr[6] = crc & 0xFF;
+	snstr[7] = (crc & 0xFF00) >> 8;
+	snstr[8] = '\0';
+
+	// obfuscate
+	MixAuth(snstr);
+	return true;
+}
+
+// decodes serial number and new service plan expiration date
+// this is done on the Flagger mobile
+// returns false if check character does not match or if values are out of range
+bool DecodeAuth(char *snstr, uint16_t *eday, uint16_t *emon, uint16_t *eyear, uint16_t *sn) {
+	uint16_t crc;
+	uint32_t expday;
+
+	// descramble
+	MixAuth(snstr);
+
+	// check the crc
+	crc = snstr[6] + (snstr[7] << 8);
+	if (crc != crc16((uint8_t *) snstr, 6))
+		return false;
+
+	snstr[6] = '\0';
+	expday = DecodeNumber(snstr+3);
+	CalcDate(eday, emon, eyear, expday);
+
+	snstr[3] = '\0';
+	*sn = DecodeNumber(snstr);
+
+	// range check
 	if (*eday < 1 || *eday > 31)
 		return false;
 	if (*emon < 1 || *emon > 12)

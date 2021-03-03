@@ -1,10 +1,11 @@
-﻿Build started 3/2/2021 4:58:07 PM.
+﻿Build started 3/2/2021 8:07:22 PM.
      1>Project "C:\Users\Video\Documents\GitHub\encryptfulldate\encrypt\encrypt.vcxproj" on node 2 (build target(s)).
      1>InitializeBuildStatus:
          Touching "Debug\encrypt.unsuccessfulbuild".
        ClCompile:
          All outputs are up-to-date.
-         All outputs are up-to-date.
+         C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin\CL.exe /c /ZI /nologo /W3 /WX- /Od /Oy- /D WIN32 /D _DEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Yu"StdAfx.h" /Fp"Debug\encrypt.pch" /Fo"Debug\\" /Fd"Debug\vc100.pdb" /Gd /TP /analyze- /errorReport:prompt subscribe.cpp
+         subscribe.cpp
        ManifestResourceCompile:
          All outputs are up-to-date.
        Link:
@@ -25,4 +26,4 @@
 
 Build succeeded.
 
-Time Elapsed 00:00:00.81
+Time Elapsed 00:00:00.88
