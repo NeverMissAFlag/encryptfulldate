@@ -18,7 +18,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	printf("Today's Date: %d-%02d-%02d\n", 1900+timeStruct->tm_year, 1+timeStruct->tm_mon, timeStruct->tm_mday);
 
 	while (1) {
-		puts("Enter mfr week, mfr year, exp day, exp mon, exp year, sn ");
+/*
+		puts("Request: Enter mfr week, mfr year, exp day, exp mon, exp year, sn ");
 		scanf("%d,%d,%d,%d,%d,%d", &inmfrweek, &inmfryear, &inexpday, &inexpmonth, &inexpyear, &insn);
 		printf("Got %d,%d,%d,%d,%d,%d\n", inmfrweek, inmfryear, inexpday, inexpmonth, inexpyear, insn);
 
@@ -31,8 +32,20 @@ int _tmain(int argc, _TCHAR* argv[])
 			else
 				printf("Decoded values %d,%d,%d,%d,%d,%d\n", outmfrweek, outmfryear, outexpday, outexpmonth, outexpyear, outsn);
 		}
-	}
+*/
+		puts("Authorization: Enter exp day, exp mon, exp year, sn ");
+		scanf("%d,%d,%d,%d", &inexpday, &inexpmonth, &inexpyear, &insn);
+		printf("Got %d,%d,%d,%d\n", inexpday, inexpmonth, inexpyear, insn);
 
+		if (!EncodeAuth(encodedstr, inexpday, inexpmonth, inexpyear, insn))
+			puts("Error Encoding\n");
+		else {
+			printf("Encoded string = |%s|\n", encodedstr);
+			if (!DecodeAuth(encodedstr, &outexpday, &outexpmonth, &outexpyear, &outsn))
+				puts("Error Decoding\n");
+			else
+				printf("Decoded values %d,%d,%d,%d\n", outexpday, outexpmonth, outexpyear, outsn);
+		}
+	}
 	return 0;
 }
-

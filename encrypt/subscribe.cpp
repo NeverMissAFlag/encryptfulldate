@@ -84,6 +84,21 @@ void InvertDigits(char *s) {
 	}
 }
 
+void TumbleDigits(char *s, bool forward) {
+	int seed = GetBaseNumber(*s);
+	int charpos = 0;
+
+	s++;
+	while ('\0' != *s) {
+		if (forward)
+			*s = GetBaseSymbol((charpos + seed + GetBaseNumber(*s)) % ENCODEBASE);
+		else
+			*s = GetBaseSymbol((ENCODEBASE - charpos - seed + GetBaseNumber(*s)) % ENCODEBASE);
+		++s;
+		++charpos;
+	}
+}
+
 void SwapChar(char *a, char *b) {
 	char temp = *a;
 	*a = *b;
@@ -105,13 +120,19 @@ void MixSN(char *s) {
 
 // this swaps characters and inverts the base 36 digits for the service authorization (8 characters)
 // calling again will undo the mix
-void MixAuth(char *s) {
+void MixAuth(char *s, bool forward) {
+
+	if (forward)
+		TumbleDigits (s, true);
 
 	// swap some digits for obfuscation
-	SwapChar(&(s[0]), &(s[6]));
-	SwapChar(&(s[1]), &(s[4]));
+	SwapChar(&(s[1]), &(s[7]));
 	SwapChar(&(s[2]), &(s[5]));
-	SwapChar(&(s[3]), &(s[7]));
+	SwapChar(&(s[3]), &(s[6]));
+	SwapChar(&(s[4]), &(s[8]));
+
+	if (!forward)
+		TumbleDigits (s, false);
 
 }
 
@@ -120,8 +141,8 @@ uint16_t CalcDays(uint8_t day, uint8_t mon, uint16_t year) {
 	const uint8_t calendar[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 	uint32_t daycount = 0;
 
-	if ((year%4) && (mon > 2)) daycount++;				// If leap year and already past feb add a day
-	daycount += day;															// Add on the days into this month
+	if ((0 == (year%4)) && (mon > 2)) daycount++;					// If leap year and already past feb add a day
+	daycount += day;																// Add on the days into this month
 
 	// add on the days this year up to last month
 	mon--;
@@ -148,22 +169,25 @@ void CalcDate(uint16_t *day, uint16_t *mon, uint16_t *year, uint16_t days) {
 
 	*year = 2020;
 
+	// count off the years
 	while (days > 365 ) {
 		// Fix leap year
-		if (!(*year%4) && days == 366) break;
-		days -= ((*year % 4)? 365 : 366);
+		if ((0 == (*year) % 4) && days == 366) break;
+		days -= (((*year) % 4)? 365 : 366);
 		++*year;
 	}
 
-	if (!(*year%4)) calendar[1] = 29;	// Fix leap year
+	if (0 == (*year) % 4) calendar[1] = 29;	// Fix leap year
 
 	*mon = 0;
 
+	// count off the months in this year
 	while (days > calendar[*mon])	{
 		days -= calendar[*mon];
 		++*mon;
 	}
 
+	// whatever is left is day of month
 	++*mon;
 	*day = days;
 }
@@ -273,11 +297,11 @@ bool DecodeSN(char *snstr, uint16_t *mweek, uint16_t *myear, uint16_t *eday, uin
 }
 
 // calculates a 16 bit crc from an array of bytes
-uint16_t crc16(uint8_t *data_p, uint8_t length){
+uint16_t crc16(uint8_t *data_p, uint8_t length) {
     uint8_t x;
     uint16_t crc = 0xFFFF;
 
-    while (length--){
+    while (length--) {
         x = crc >> 8 ^ *data_p++;
         x ^= x>>4;
         crc = (crc << 8) ^ ((unsigned short)(x << 12)) ^ ((unsigned short)(x <<5)) ^ ((unsigned short)x);
@@ -291,9 +315,10 @@ uint16_t crc16(uint8_t *data_p, uint8_t length){
 // returns false on error
 // return string is encoded as 9 character string (before scrambling):
 // WWSSSXXXC where WW is week of manufacture since 2020, SSS is serial number, XXX is expiration day since 2020, and C is additive checksum
-bool EncodeAuthKey(char *snstr, uint16_t eday, uint16_t emon, uint16_t eyear, uint16_t sn) {
+bool EncodeAuth(char *snstr, uint16_t eday, uint16_t emon, uint16_t eyear, uint16_t sn) {
 	uint16_t expday;
 	uint16_t crc;
+	int seed;
 
 	if (eday < 1 || eday > 31)
 		return false;
@@ -304,21 +329,25 @@ bool EncodeAuthKey(char *snstr, uint16_t eday, uint16_t emon, uint16_t eyear, ui
 	if (sn <= 1000 || sn >= 42357)
 		return false;
 
+	// get scrambler code, random number between 5 and 30 inclusive
+	seed = 5 + rand() % 30;
+	snstr[0] = GetBaseSymbol(seed);
+
 	// calculate expiration day and put into string
 	expday = CalcDays(eday, emon, eyear);
-	EncodeNumber(snstr, 3, expday);
+	EncodeNumber(snstr+1, 3, expday);
 
 	// put sn into string
-	EncodeNumber(snstr+3, 3, sn);
+	EncodeNumber(snstr+4, 3, sn);
 
 	// calculate and insert check digits
-	crc = crc16((uint8_t *) snstr, 6);
-	snstr[6] = crc & 0xFF;
-	snstr[7] = (crc & 0xFF00) >> 8;
-	snstr[8] = '\0';
+	crc = crc16((uint8_t *) snstr, 7);
+	snstr[7] = GetBaseSymbol((crc & 0xFF) % 36);
+	snstr[8] = GetBaseSymbol(((crc & 0xFF00) >> 8) % 36);
+	snstr[9] = '\0';
 
 	// obfuscate
-	MixAuth(snstr);
+	MixAuth(snstr, true);
 	return true;
 }
 
@@ -330,19 +359,21 @@ bool DecodeAuth(char *snstr, uint16_t *eday, uint16_t *emon, uint16_t *eyear, ui
 	uint32_t expday;
 
 	// descramble
-	MixAuth(snstr);
+	MixAuth(snstr, false);
 
 	// check the crc
-	crc = snstr[6] + (snstr[7] << 8);
-	if (crc != crc16((uint8_t *) snstr, 6))
+	crc = crc16((uint8_t *) snstr, 7);
+	if (snstr[7] != GetBaseSymbol((crc & 0xFF) % 36))
+		return false;
+	if (snstr[8] != GetBaseSymbol(((crc & 0xFF00) >> 8) % 36))
 		return false;
 
-	snstr[6] = '\0';
-	expday = DecodeNumber(snstr+3);
-	CalcDate(eday, emon, eyear, expday);
+	snstr[7] = '\0';
+	*sn = DecodeNumber(snstr+4);
 
-	snstr[3] = '\0';
-	*sn = DecodeNumber(snstr);
+	snstr[4] = '\0';
+	expday = DecodeNumber(snstr+1);
+	CalcDate(eday, emon, eyear, expday);
 
 	// range check
 	if (*eday < 1 || *eday > 31)
